@@ -48,3 +48,97 @@ def calculate_volatility(returns):
 def calculate_covariance(returns):
     covariance_matrix = returns.cov() * 252  # Annualize the covariance matrix
     return covariance_matrix
+
+# Build equally-weighted portfolio returns
+def build_equal_weight_portfolio(returns):
+    """
+    Construct an equally-weighted portfolio from individual stock returns.
+    """
+    n_assets = returns.shape[1]
+    weights = np.ones(n_assets) / n_assets  # 1/N
+    # Matrix multiplication: each row (date) * weights
+    portfolio_returns = returns.dot(weights)
+    portfolio_returns.name = "Portfolio_Return"
+    return portfolio_returns
+
+def compute_performance_metrics(portfolio_returns, rf_annual=0.02):
+    """
+    Compute key risk & performance metrics for a portfolio time series of daily returns.
+    
+    rf_annual : annual risk-free rate (e.g. 2% = 0.02)
+    """
+    # Convert risk-free to daily
+    rf_daily = (1 + rf_annual) ** (1/252) - 1
+
+    # Excess returns
+    excess_returns = portfolio_returns - rf_daily
+
+    # Annualized return & volatility
+    avg_daily_ret = portfolio_returns.mean()
+    ann_ret = (1 + avg_daily_ret) ** 252 - 1
+    ann_vol = portfolio_returns.std() * np.sqrt(252)
+
+    # Sharpe ratio (annualized)
+    sharpe = (excess_returns.mean() * 252) / (portfolio_returns.std() * np.sqrt(252))
+
+    # Max drawdown
+    cum_returns = (1 + portfolio_returns).cumprod()
+    running_max = cum_returns.cummax()
+    drawdown = (cum_returns / running_max) - 1
+    max_dd = drawdown.min()
+
+    # Historical VaR (95%) on daily returns
+    var_95 = np.percentile(portfolio_returns, 5)  # 5% quantile (left tail)
+
+    metrics = {
+        "Annual Return": ann_ret,
+        "Annual Volatility": ann_vol,
+        "Sharpe Ratio": sharpe,
+        "Max Drawdown": max_dd,
+        "Daily 95% VaR": var_95
+    }
+    return metrics, cum_returns, drawdown
+
+
+def plot_portfolio_performance(cum_returns, drawdown):
+    """
+    Plot cumulative performance and drawdown of the portfolio.
+    """
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+    # Cumulative performance
+    axes[0].plot(cum_returns.index, cum_returns.values)
+    axes[0].set_title("Cumulative Portfolio Performance")
+    axes[0].set_ylabel("Cumulative Value (base = 1)")
+    axes[0].grid(True)
+
+    # Drawdown
+    axes[1].plot(drawdown.index, drawdown.values)
+    axes[1].set_title("Portfolio Drawdown")
+    axes[1].set_ylabel("Drawdown")
+    axes[1].set_xlabel("Date")
+    axes[1].grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_rolling_sharpe(portfolio_returns, rf_annual=0.02, window=252):
+    """
+    Plot rolling annualized Sharpe ratio.
+    window : rolling window in days (252 ≈ 1 year)
+    """
+    rf_daily = (1 + rf_annual) ** (1/252) - 1
+    excess_returns = portfolio_returns - rf_daily
+
+    rolling_vol = excess_returns.rolling(window).std() * np.sqrt(252)
+    rolling_mean = excess_returns.rolling(window).mean() * 252
+    rolling_sharpe = rolling_mean / rolling_vol
+
+    plt.figure(figsize=(10,4))
+    plt.plot(rolling_sharpe.index, rolling_sharpe.values)
+    plt.title(f"Rolling Sharpe Ratio (window = {window} days)")
+    plt.ylabel("Sharpe")
+    plt.xlabel("Date")
+    plt.grid(True)
+    plt.show()
